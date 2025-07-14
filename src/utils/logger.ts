@@ -14,42 +14,42 @@ interface LogRequest {
 interface LogError {
   message: string;
   stack?: string;
+  [key: string]: any;
 }
 
 interface LogModule {
   domain?: string;
-  filename?: string;
+  filepath?: string;
 }
 
 interface LogContext {
   user?: LogUser;
   request?: LogRequest;
   error?: LogError;
-  module?: LogModule;
   metadata?: Record<string, any>;
 }
 
 const baseLogger = pino({
   level: process.env.LOG_LEVEL || 'info',
   timestamp: pino.stdTimeFunctions.isoTime,
+  base: null,
+//   transport: {
+//           target: 'pino-pretty'
+//   }
 });
 
-
 function getRequestContext(req?: any): LogContext {
-  
   if (!req) return {};
-  
+
   const context: LogContext = {};
-  
+
   try {
-    
     if (req.user?.id || req.ip) {
       context.user = {};
       if (req.user?.id) context.user.id = String(req.user.id);
       if (req.ip) context.user.ip = String(req.ip);
     }
-    
-    
+
     if (req.id || req.method || req.originalUrl || req.url) {
       context.request = {};
       if (req.id) context.request.id = String(req.id);
@@ -58,19 +58,20 @@ function getRequestContext(req?: any): LogContext {
       else if (req.url) context.request.route = String(req.url);
     }
   } catch (error) {
-    console.warn('Failed to extract request context:', error);
+    baseLogger.warn({ error }, 'Failed to extract request context');
   }
-  
+
   return context;
 }
 
 function processError(error?: any): LogError | undefined {
   if (!error) return undefined;
-  
+
   try {
     return {
       message: error.message || String(error) || 'Unknown error',
-      stack: error.stack || 'No stack trace available'
+      stack: error.stack || 'No stack trace available',
+      ...error // Preserve custom error properties
     };
   } catch (err) {
     return {
@@ -89,58 +90,30 @@ interface Logger {
   fatal: (message: string, req?: any, error?: any, metadata?: Record<string, any>) => void;
 }
 
-const logger: Logger = {
+function createLogger(moduleInfo?: LogModule): Logger {
+  const childLogger = moduleInfo ? baseLogger.child({ module: moduleInfo }) : baseLogger;
 
-  trace: (message: string, req?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      metadata 
-    };
-    baseLogger.trace(context, message);
-  },
-  
-  debug: (message: string, req?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      metadata 
-    };
-    baseLogger.debug(context, message);
-  },
-  
-  info: (message: string, req?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      metadata 
-    };
-    baseLogger.info(context, message);
-  },
-  
-  warn: (message: string, req?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      metadata 
-    };
-    baseLogger.warn(context, message);
-  },
-  
-  error: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      error: processError(error),
-      metadata 
-    };
-    baseLogger.error(context, message);
-  },
-  
-  fatal: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => {
-    const context: LogContext = { 
-      ...getRequestContext(req), 
-      error: processError(error),
-      metadata 
-    };
-    baseLogger.fatal(context, message);
-  }
-};
+  return {
+    trace: (message: string, req?: any, metadata: Record<string, any> = {}) => {
+      childLogger.trace({ ...getRequestContext(req), metadata }, message);
+    },
+    debug: (message: string, req?: any, metadata: Record<string, any> = {}) => {
+      childLogger.debug({ ...getRequestContext(req), metadata }, message);
+    },
+    info: (message: string, req?: any, metadata: Record<string, any> = {}) => {
+      childLogger.info({ ...getRequestContext(req), metadata }, message);
+    },
+    warn: (message: string, req?: any, metadata: Record<string, any> = {}) => {
+      childLogger.warn({ ...getRequestContext(req), metadata }, message);
+    },
+    error: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => {
+      childLogger.error({ ...getRequestContext(req), error: processError(error), metadata }, message);
+    },
+    fatal: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => {
+      childLogger.fatal({ ...getRequestContext(req), error: processError(error), metadata }, message);
+    }
+  };
+}
 
-export default logger;
+export default createLogger;
 export type { LogContext, LogUser, LogRequest, LogError, LogModule };
