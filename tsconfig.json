@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",                 // Modern JS supported by recent Node versions
+    "module": "ESNext",                 // Keep ESM output for Node
+    "moduleResolution": "node",        // Resolve modules like Node does
+    "outDir": "./dist",                 // Where compiled files go
+    "rootDir": "./src",                 // Your source code root
+    "esModuleInterop": true,            // Compatibility with CommonJS modules
+    "resolveJsonModule": true,          // Allow importing JSON files if needed
+    "strict": true,                     // All strict type-checking options ON
+    "skipLibCheck": true,               // Skip type checks on declaration files for speed
+    "forceConsistentCasingInFileNames": true  // Prevent casing issues on imports
+  },
+  "include": ["src"]
+}
