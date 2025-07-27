@@ -14,12 +14,10 @@ interface LogRequest {
 interface LogError { 
  message: string; 
  stack?: string; 
+ domain?: string;
+ filepath?: string;
+ context?: any;
  [key: string]: any; 
-} 
-
-interface LogModule { 
- domain?: string; 
- filepath?: string; 
 } 
 
 interface LogContext { 
@@ -33,13 +31,13 @@ const baseLogger = pino({
  level: process.env.LOG_LEVEL || 'info', 
  timestamp: pino.stdTimeFunctions.isoTime, 
  base: null, 
-//   transport: { 
-//           target: 'pino-pretty' 
-//   } 
 }); 
 
 function getRequestContext(req?: any): LogContext { 
- if (!req) return {}; 
+ if (!req) {
+   baseLogger.debug('Request context not provided');
+   return {};
+ }
 
  const context: LogContext = {}; 
 
@@ -65,15 +63,32 @@ function getRequestContext(req?: any): LogContext {
 } 
 
 function processError(error?: any): LogError | undefined { 
- if (!error) return undefined; 
+ if (!error) {
+   baseLogger.debug('Error object not provided');
+   return undefined;
+ }
 
  try { 
-   return { 
+   const processedError: LogError = {
      message: error.message || String(error) || 'Unknown error', 
-     stack: error.stack || 'No stack trace available', 
-     ...error // Preserve custom error properties 
-   }; 
+     stack: error.stack || 'No stack trace available'
+   };
+
+   // Extract domain info if it exists
+   if (error.domain) processedError.domain = String(error.domain);
+   if (error.filepath) processedError.filepath = String(error.filepath);
+   if (error.context) processedError.context = error.context;
+
+   // Preserve any other custom error properties
+   Object.keys(error).forEach(key => {
+     if (!['message', 'stack', 'domain', 'filepath', 'context'].includes(key)) {
+       processedError[key] = error[key];
+     }
+   });
+
+   return processedError;
  } catch (err) { 
+   baseLogger.warn('Failed to process error object');
    return { 
      message: 'Error processing failed', 
      stack: 'Unable to extract stack trace' 
@@ -90,37 +105,35 @@ interface Logger {
  fatal: (message: string, req?: any, error?: any, metadata?: Record<string, any>) => void; 
 } 
 
-function createLogger(moduleInfo?: LogModule): Logger { 
- const childLogger = moduleInfo ? baseLogger.child({ module: moduleInfo }) : baseLogger; 
-
+function createLogger(): Logger { 
  return { 
    trace: (message: string, req?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.trace(context, message); 
+     baseLogger.trace(context, message); 
    }, 
    debug: (message: string, req?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.debug(context, message); 
+     baseLogger.debug(context, message); 
    }, 
    info: (message: string, req?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.info(context, message); 
+     baseLogger.info(context, message); 
    }, 
    warn: (message: string, req?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.warn(context, message); 
+     baseLogger.warn(context, message); 
    }, 
    error: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
@@ -131,7 +144,7 @@ function createLogger(moduleInfo?: LogModule): Logger {
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.error(context, message); 
+     baseLogger.error(context, message); 
    }, 
    fatal: (message: string, req?: any, error?: any, metadata: Record<string, any> = {}) => { 
      const context = getRequestContext(req);
@@ -142,10 +155,10 @@ function createLogger(moduleInfo?: LogModule): Logger {
      if (Object.keys(metadata).length > 0) {
        context.metadata = metadata;
      }
-     childLogger.fatal(context, message); 
+     baseLogger.fatal(context, message); 
    } 
  }; 
 } 
 
 export default createLogger; 
-export type { LogContext, LogUser, LogRequest, LogError, LogModule };
+export type { LogContext, LogUser, LogRequest, LogError };
